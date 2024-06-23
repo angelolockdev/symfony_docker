@@ -1,0 +1,106 @@
+version: '3.7'
+
+services:
+    symfony_docker_app:
+        hostname: ${COMPOSE_PROJECT_NAME}_app
+        container_name: ${COMPOSE_PROJECT_NAME}_app
+        expose:
+            - "9000"
+        labels:
+            - traefik.enable=false
+        networks:
+            - internal
+            - traefik_net
+
+    symfony_docker_web:
+        container_name: ${COMPOSE_PROJECT_NAME}_web
+        networks:
+            - traefik_net
+            - internal
+        labels:
+            - "traefik.enable=true"
+            - "traefik.docker.network=traefik_net"
+            # Conf middlewares
+            # - "traefik.http.middlewares.auth-${COMPOSE_PROJECT_NAME}.basicauth.users=${COMPOSE_PROJECT_NAME}:$$apr1$$ytUC9EcZ$$u3b/D2cTP7ithPcdeIYRX0"
+            - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+            - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
+            - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}Header.headers.framedeny=true"
+            - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}Header.headers.browserxssfilter=true"
+            - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}Header.headers.customFrameOptionsValue=sameorigin"
+            # Conf router https
+            - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-websecure.rule=Host(`${HOST}`)"
+            - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-websecure.priority=99"
+            - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-websecure.entrypoints=websecure"
+            - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-websecure.tls=true"
+            - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-websecure.tls.certresolver=default"
+            - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-websecure.tls.options=intermediate@file"
+            - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-websecure.middlewares=${COMPOSE_PROJECT_NAME}Header,compress@file"
+            # Conf router http
+            - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-web.rule=Host(`${HOST}`)"
+            - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-web.priority=98"
+            - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-web.entrypoints=web"
+            - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-web.middlewares=redirect-to-https,${COMPOSE_PROJECT_NAME}Header,compress@file"
+
+    symfony_docker_db:
+        container_name: ${COMPOSE_PROJECT_NAME}_db
+        expose:
+            - 3306
+        networks:
+            - traefik_net
+            - default
+        ports:
+            - "3307:3306"
+        volumes:
+            - ./data/db/mysql:/var/lib/mysql
+
+    symfony_docker_composer:
+        container_name: ${COMPOSE_PROJECT_NAME}_composer
+        networks:
+            - internal
+            - traefik_net
+        image: fulldigits/composer:8.2-agrimutuel
+        volumes:
+            - ../:/app
+            - composer_caches:/var/cache
+        command: >
+            /bin/sh -c "echo '*** Install main dependencies ***'
+            && composer install -vvv
+            && echo '*** Install theme dependencies ***'
+            && composer install -vvv -d web/app/themes/symfony_docker"
+        environment:
+            - COMPOSER_ALLOW_SUPERUSER=1
+
+    # symfony_docker_yarn:
+    #     image: node:16-alpine3.13
+    #     working_dir: /var/app
+    #     env_file: ../.env
+    #     volumes:
+    #         - ../.git:/var/.git
+    #         - ./data/ssl:/var/ssl
+    #         - ../web/app/themes/symfony_docker/:/var/app
+    #         - node-modules:/var/app/node_modules
+    #         - caches:/var/cache
+    #     command: >
+    #         /bin/sh -c "echo '*** Install dependencies ***'
+    #         && yarn
+    #         && yarn build"
+    #     ports:
+    #         - ${BROWSERSYNC_PORT}:${BROWSERSYNC_PORT}
+    #         - ${BROWSERSYNC_PORT_UI}:${BROWSERSYNC_PORT_UI}
+    #         - ${HOT_RELOAD_PORT}:${HOT_RELOAD_PORT}
+    #     environment:
+    #         - YARN_CACHE_FOLDER=/var/cache/yarn
+    #         - APP_CONTAINER=symfony_docker_web
+    #         - BROWSERSYNC_PORT=${BROWSERSYNC_PORT}
+    #         - BROWSERSYNC_PORT_UI=${BROWSERSYNC_PORT_UI}
+    #         - HOT_RELOAD_PORT=${HOT_RELOAD_PORT}
+ 
+
+networks:
+    internal:
+        name: ${COMPOSE_PROJECT_NAME}_site_internal
+        internal: true
+    traefik_net:
+        name: traefik_net
+
+    default:

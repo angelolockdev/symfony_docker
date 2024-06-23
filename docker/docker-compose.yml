@@ -1,0 +1,40 @@
+version: '3.7'
+
+services:
+    symfony_docker_app:
+        image: fulldigits/php:8.2-agrimutuel
+        container_name: ${COMPOSE_PROJECT_NAME}_app
+        volumes:
+            - ./etc/php/php.ini:/usr/local/etc/php/conf.d/php.ini
+            - ../:/var/www/html
+        # links:
+        #     - symfony_docker_web:${HOST}
+
+    symfony_docker_web:
+        image: fulldigits/apache
+        container_name: ${COMPOSE_PROJECT_NAME}_web
+        volumes:
+            - ../:/var/www/html
+            - ./etc/apache/000-default.conf:/usr/local/apache2/conf.d/000-default.conf
+            - ./etc/apache/httpd-custom.conf:/usr/local/apache2/httpd-custom.conf
+        environment:
+            APACHE_SERVER_NAME: ${HOST}
+            APACHE_BACKEND_HOST: ${SERVER_PHP}
+        depends_on:
+            - symfony_docker_app
+            - symfony_docker_db
+
+    symfony_docker_db:
+        image: mariadb:10.5
+        container_name: ${COMPOSE_PROJECT_NAME}_db
+        environment:
+            - MYSQL_DATABASE=${DB_NAME}
+            - MYSQL_USER=${DB_USER}
+            - MYSQL_PASSWORD=${DB_PASSWORD}
+            - MYSQL_RANDOM_ROOT_PASSWORD='yes'
+
+volumes:
+    caches:
+    node-modules:
+    composer_caches:
+        name: ${COMPOSE_PROJECT_NAME}_composer-caches
